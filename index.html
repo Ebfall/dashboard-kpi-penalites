@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{
   --ink:#14213D; --steel:#5C6B85; --paper:#F5F6F8; --card:#FFFFFF;
@@ -299,6 +301,26 @@ function initFilters(){
   const dl=document.getElementById('siteList');
   if(dl){ dl.innerHTML=''; uniq(DATA.tickets.map(t=>t.s)).sort().forEach(s=>{const o=document.createElement('option');o.value=s;dl.appendChild(o);}); }
 }
+// ==== Stockage centralisé (Firebase Realtime Database) : partage des saisies entre collaborateurs ====
+// 1) Crée un projet Firebase gratuit sur https://console.firebase.google.com
+// 2) Active "Realtime Database" (mode test) puis colle ta config ci-dessous (Paramètres du projet > Vos applications > Config SDK)
+// 3) Si ce bloc reste vide/placeholder, le dashboard fonctionne comme avant (localStorage uniquement, non partagé)
+const firebaseConfig = {
+  apiKey: "AIzaSyCEv7x3YJWOIVggzBrvy8_iYiC4THOJLZw",
+  authDomain: "dashboard-kpi-penalites.firebaseapp.com",
+  databaseURL: "https://dashboard-kpi-penalites-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "dashboard-kpi-penalites",
+};
+let db = null;
+try{
+  if(firebaseConfig.apiKey && firebaseConfig.databaseURL && typeof firebase!=='undefined'){
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  }
+}catch(e){ console.warn('Firebase non initialisé, mode local uniquement.', e); db=null; }
+
+function keyFor(mois){ return mois || '_tous'; }
+
 function init(){
   initFilters();
   document.getElementById('fRef').value = new Date().toISOString().slice(0,10);
@@ -306,6 +328,18 @@ function init(){
   curMois = v('fMois')||'';
   loadSaisies(curMois);
   refreshAll();
+  if(db){
+    db.ref('kpiSaisiesParMois').on('value', function(snap){
+      const val = snap.val() || {};
+      const next = {};
+      Object.entries(val).forEach(([k,o])=>{ next[k==='_tous'?'':k] = o; });
+      SAISIES = next;
+      try{ localStorage.setItem('kpiSaisiesParMois', JSON.stringify(SAISIES)); }catch(e){}
+      // Ne pas écraser un champ que l'utilisateur est en train de saisir
+      const activeIsSaisie = document.activeElement && SAISIE_IDS.includes(document.activeElement.id);
+      if(!activeIsSaisie){ loadSaisies(curMois); refreshAll(); }
+    }, function(err){ console.warn('Sync Firebase indisponible, mode local.', err); });
+  }
 }
 function uniq(a){return [...new Set(a)].sort();}
 function fill(id, opts, all){
@@ -373,6 +407,7 @@ function snapshotSaisies(){  // mémorise les valeurs affichées sous le mois co
   const o={}; SAISIE_IDS.forEach(id=>{const e=document.getElementById(id); if(e)o[id]=e.value;});
   SAISIES[curMois]=o;
   try{ localStorage.setItem('kpiSaisiesParMois', JSON.stringify(SAISIES)); }catch(e){}
+  if(db){ try{ db.ref('kpiSaisiesParMois/'+keyFor(curMois)).set(o); }catch(e){ console.warn('Écriture Firebase impossible.', e); } }
 }
 function loadSaisies(mois){  // applique aux champs les valeurs du mois demandé (ou les défauts)
   const o=SAISIES[mois]||{};
