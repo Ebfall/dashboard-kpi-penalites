@@ -327,8 +327,12 @@ function init(){
   try{ SAISIES = JSON.parse(localStorage.getItem('kpiSaisiesParMois'))||{}; }catch(e){ SAISIES={}; }
   curMois = v('fMois')||'';
   loadSaisies(curMois);
-  refreshAll();
   if(db){
+    // IMPORTANT : on attend la 1ère réponse de Firebase avant d'afficher/écrire quoi que ce
+    // soit, sinon ce navigateur écraserait la base partagée avec ses valeurs locales par
+    // défaut avant d'avoir reçu les saisies des autres collaborateurs (effet observé : les
+    // valeurs ne se synchronisaient jamais, chaque onglet "gagnait la course" au démarrage).
+    let firstSync = false;
     db.ref('kpiSaisiesParMois').on('value', function(snap){
       const val = snap.val() || {};
       const next = {};
@@ -337,8 +341,18 @@ function init(){
       try{ localStorage.setItem('kpiSaisiesParMois', JSON.stringify(SAISIES)); }catch(e){}
       // Ne pas écraser un champ que l'utilisateur est en train de saisir
       const activeIsSaisie = document.activeElement && SAISIE_IDS.includes(document.activeElement.id);
-      if(!activeIsSaisie){ loadSaisies(curMois); refreshAll(); }
-    }, function(err){ console.warn('Sync Firebase indisponible, mode local.', err); });
+      if(!activeIsSaisie){ loadSaisies(curMois); }
+      refreshAll();
+      firstSync = true;
+    }, function(err){
+      console.warn('Sync Firebase indisponible, mode local.', err);
+      if(!firstSync){ firstSync = true; refreshAll(); }
+    });
+    // Filet de sécurité : si Firebase ne répond pas sous 3 s (réseau lent/bloqué),
+    // on affiche quand même le dashboard avec les données locales pour ne pas rester bloqué.
+    setTimeout(function(){ if(!firstSync){ firstSync = true; refreshAll(); } }, 3000);
+  } else {
+    refreshAll();
   }
 }
 function uniq(a){return [...new Set(a)].sort();}
