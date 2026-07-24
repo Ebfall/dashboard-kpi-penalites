@@ -303,6 +303,17 @@ tbody tr:nth-child(even){background:#F0F3F7}
 
 <div id="viewInterventions" style="display:none">
 
+  <div class="tbl-head" style="margin-bottom:10px">
+    <div>
+      <h2 style="margin:0">Suivi des interventions</h2>
+      <div class="gnote" id="ivSourceInfo">Données issues du dernier export chargé dans ce fichier.</div>
+    </div>
+    <div>
+      <input type="file" id="fileIvXlsx" accept=".xlsx,.xlsm" style="display:none" onchange="loadIvWorkbook(this.files[0]);this.value=''">
+      <button type="button" id="ivLoadBtn" class="b-amber" onclick="document.getElementById('fileIvXlsx').click()">&#8682; Charger Export Tickets</button>
+    </div>
+  </div>
+
   <div class="filters">
     <div><label>Mois</label><select id="ivMois" onchange="refreshInterv()"></select></div>
     <div><label>O&amp;M Office</label><select id="ivOffice" onchange="refreshInterv()"></select></div>
@@ -339,10 +350,26 @@ tbody tr:nth-child(even){background:#F0F3F7}
   <div class="panel" style="margin-bottom:16px; border-left:4px solid var(--signal)">
     <div class="tbl-head">
       <h2 style="margin:0">🚨 Alertes — sites instables prioritaires</h2>
-      <div><span class="gnote" id="ivAlertCount"></span></div>
+      <div>
+        <select id="topNAlert" onchange="refreshInterv()">
+          <option value="10">Top 10</option><option value="20">Top 20</option>
+          <option value="50">Top 50</option><option value="1000000">Tout afficher</option>
+        </select>
+        <button type="button" class="pbtn" onclick="ivExport('alert')">&#8681; Extraire</button>
+        <span class="gnote" id="ivAlertCount"></span>
+      </div>
     </div>
     <div class="gnote" style="margin-bottom:10px">Sites avec le plus de récurrences après intervention, classés par urgence. Priorité aux sites ayant subi un incident au cours du dernier mois.</div>
-    <div id="ivAlertList"></div>
+    <div style="overflow:auto;max-height:520px">
+      <table id="ivTblAlert">
+        <thead><tr>
+          <th>Statut</th><th>Site Name</th><th>Site ID</th><th>O&amp;M Office</th>
+          <th>Dernier incident</th><th>Dernière intervention</th><th>Type d'intervention</th>
+          <th class="r">Récurrence(s) au total</th><th>Recommandation</th>
+        </tr></thead>
+        <tbody id="ivAlertList"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="panel" style="margin-bottom:16px">
@@ -1365,21 +1392,27 @@ function refreshInterv(){
   set('ivKInstable', nbInstable);
   set('ivKInstableDet', 'Incident constaté au cours des 30 derniers jours');
 
-  const alerts = allEff.filter(r=>!r.stable).sort((a,b)=> (b.nbRec-a.nbRec) || (a.daysSinceOcc-b.daysSinceOcc)).slice(0,10);
+  const topNAlert = parseInt(v('topNAlert')||'10',10);
+  const allAlerts = allEff.filter(r=>!r.stable).sort((a,b)=> (b.nbRec-a.nbRec) || (a.daysSinceOcc-b.daysSinceOcc));
+  const alerts = allAlerts.slice(0,topNAlert);
   document.getElementById('ivAlertCount').textContent = `${nbInstable} site(s) instable(s) au total — top ${alerts.length} affiché(s)`;
+  _ivLastRows.alert = allAlerts;
   const alertHost = document.getElementById('ivAlertList');
   if(!alerts.length){
-    alertHost.innerHTML = '<div class="gnote">Aucun site instable ne correspond aux critères actuels — 🎉</div>';
+    alertHost.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--steel)">Aucun site instable ne correspond aux critères actuels — 🎉</td></tr>';
   } else {
     alertHost.innerHTML = alerts.map(r=>`
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)">
-        <span class="tag r" style="flex:none">⚠ URGENT</span>
-        <div style="flex:1">
-          <b>${r.sname}</b> <span class="mono-small">(${r.sid||'—'})</span> — ${r.om||'—'}
-          <div class="gnote">Dernier incident il y a ${r.daysSinceOcc}j (${ivFmtDate(r.lastOcc)}) · Dernière intervention le ${ivFmtDate(r.lastInterv)} (${r.type}) · ${r.nbRec} récurrence(s) au total</div>
-        </div>
-        <div class="reco-cell" style="flex:none;max-width:260px">${r.reco||''}</div>
-      </div>`).join('');
+      <tr>
+        <td><span class="tag r">⚠ URGENT</span></td>
+        <td><b>${r.sname}</b></td>
+        <td class="mono-small">${r.sid||'—'}</td>
+        <td>${r.om||'—'}</td>
+        <td>${ivFmtDate(r.lastOcc)} <span class="gnote">(il y a ${r.daysSinceOcc}j)</span></td>
+        <td>${ivFmtDate(r.lastInterv)}</td>
+        <td>${r.type}</td>
+        <td class="r num">${r.nbRec}</td>
+        <td class="reco-cell">${r.reco||''}</td>
+      </tr>`).join('');
   }
 
   // ---- Cartes résumé principales ----
@@ -1436,6 +1469,235 @@ function ivExport(which){
     ivDownloadCsv(`efficacite_interventions_${stamp}.csv`,
       ['Site Name','Site ID','Type intervention','Typology Code','Site Class','Priorité','O&M Office','Dernière intervention','Dernière occurrence','Récurrences','Site HS','Intervention récente (<1 mois)','Inefficace','Stabilité','Recommandation'],
       _ivLastRows.eff.map(r=>[r.sname, r.sid, r.type, r.typo, r.sclass, r.prio, r.om, r.lastInterv, r.lastOcc||'', r.nbRec, r.siteHS?'Oui':'Non', r.recent?'Oui':'Non', r.inefficace?'Oui':'Non', r.stable?'Stable':'Instable', r.reco||'']));
+  } else if(which === 'alert'){
+    ivDownloadCsv(`alertes_sites_instables_${stamp}.csv`,
+      ['Site Name','Site ID','O&M Office','Dernier incident','Jours depuis incident','Dernière intervention','Type intervention','Récurrences au total','Recommandation'],
+      (_ivLastRows.alert||[]).map(r=>[r.sname, r.sid, r.om, r.lastOcc||'', r.daysSinceOcc, r.lastInterv, r.type, r.nbRec, r.reco||'']));
+  }
+}
+
+
+// ==================== RECHARGEMENT CLIENT DE L'EXPORT TICKETS ====================
+const IV_EXCLUDED_TYPES = new Set(["Plan de Remediation","Commissioning","Checking-Car","GPS Communication Lost","Audit-HSE","Plainte Bailleur"]);
+const IV_PYLON_RE = /chute|affaiss/i;
+const IV_RECO_GENERIC = "Analyser la cause de la récurrence après cette intervention et envisager une action corrective renforcée (remplacement plutôt que réparation, vérification approfondie, suivi rapproché).";
+const IV_RECO_BY_TYPE = {
+  "Preventive": "Revoir le plan de maintenance préventive : fréquence insuffisante ou exécution incomplète, à auditer sur ce site.",
+  "Maintenance Currative": "Vérifier la qualité de la réparation curative ; envisager un diagnostic plus poussé de la cause racine.",
+  "Refueling": "Contrôler le protocole de ravitaillement et la fiabilité de la mesure de niveau de carburant sur ce site.",
+  "ECART": "Analyser l'écart constaté et vérifier la mise en œuvre effective des actions correctives associées.",
+  "Site Down": "Investiguer en profondeur la cause de l'indisponibilité répétée du site.",
+  "Site Alarm": "Vérifier la fiabilité des capteurs et la réactivité du traitement des alarmes sur ce site.",
+  "Travaux Planifies": "Vérifier que les travaux planifiés ont été exécutés conformément au cahier des charges.",
+  "Boosting-battery": "Contrôler l'état de santé du parc batterie ; un boost répété peut signaler un remplacement nécessaire.",
+  "Maintenance Pilone": "Réinspecter la structure du pylône suite à la chute/l'affaissement signalé ; vérifier le respect des normes de maintenance préventive.",
+  "Typologie Audit": "Vérifier la mise en œuvre effective des actions issues de l'audit de typologie.",
+  "Audit énérgie": "Vérifier la mise en œuvre effective des actions issues de l'audit énergie.",
+};
+
+function ivNormHeader(s){
+  if(!s) return '';
+  s = String(s).toLowerCase().replace(/`/g,"'");
+  s = s.replace(/\[.*?\]/g,'');
+  s = s.replace(/[^a-z0-9]+/g,'');
+  return s;
+}
+function ivFindCol(headers, candidates, required){
+  const norm = headers.map(ivNormHeader);
+  for(const cand of candidates){
+    const nc = ivNormHeader(cand);
+    for(let i=0;i<norm.length;i++){
+      if(nc===norm[i] || (nc && norm[i].includes(nc))) return i;
+    }
+  }
+  if(required) throw new Error(`Colonne introuvable dans le fichier : « ${candidates[0]} ». Le format de l'export a peut-être changé.`);
+  return -1;
+}
+function ivParseDate(v){
+  if(v===null||v===undefined||v==='') return null;
+  if(v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if(typeof v === 'number'){
+    try{
+      const d = XLSX.SSF.parse_date_code(v);
+      if(d) return new Date(d.y, d.m-1, d.d, d.H||0, d.M||0);
+    }catch(e){}
+    return null;
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{2})[-\/.](\d{2})[-\/.](\d{4})[ T](\d{2}):(\d{2})/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+  m = s.match(/^(\d{2})[-\/.](\d{2})[-\/.](\d{4})$/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+  return null;
+}
+function ivMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function ivDateISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function ivCleanVal(v, def){
+  def = (def===undefined) ? 'Non renseigné' : def;
+  if(v===null||v===undefined) return def;
+  const s = String(v).trim();
+  return s ? s : def;
+}
+function ivTiName(raw){
+  if(!raw) return 'Non renseigné';
+  const parts = String(raw).split('|').map(p=>p.trim());
+  return parts[parts.length-1] || String(raw).trim();
+}
+function ivBuildIncidentIndex(){
+  const last = {}, count = {}, dates = {};
+  (DATA.tickets||[]).forEach(t=>{
+    if(!t.s || !t.d) return;
+    if(!dates[t.s]) dates[t.s] = [];
+    dates[t.s].push(t.d);
+    count[t.s] = (count[t.s]||0) + 1;
+    if(!last[t.s] || t.d > last[t.s]) last[t.s] = t.d;
+  });
+  Object.values(dates).forEach(arr=>arr.sort());
+  return {last, count, dates};
+}
+
+async function loadIvWorkbook(file){
+  if(!file) return;
+  const btn = document.getElementById('ivLoadBtn');
+  const setBtn = (html) => { if(btn) btn.innerHTML = html; };
+  try{
+    setBtn('&#8987; Lecture du fichier…');
+    if(typeof XLSX === 'undefined') throw new Error("La librairie de lecture Excel (SheetJS) n'a pas pu être chargée (connexion internet requise).");
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const sheetName = wb.SheetNames.find(n=>/ticket/i.test(n)) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+    if(!rows || rows.length < 2) throw new Error('La feuille du classeur semble vide.');
+    const headers = rows[0];
+
+    const col = {
+      type:   ivFindCol(headers, ["Case Type"], true),
+      sid:    ivFindCol(headers, ["Telecom Operator's Site ID","Telecom Operator`s Site ID","Site ID"], true),
+      sname:  ivFindCol(headers, ["Telecom Operator's Site Name","Telecom Operator`s Site Name","Site Name"], true),
+      typo:   ivFindCol(headers, ["Camusat Typology Code"], true),
+      prio:   ivFindCol(headers, ["Priority"], true),
+      sclass: ivFindCol(headers, ["Site Class"], true),
+      office: ivFindCol(headers, ["O&M Office"], true),
+      sup:    ivFindCol(headers, ["Ticket Assigned by"], true),
+      ti:     ivFindCol(headers, ["Field Team Name"], true),
+      dt:     ivFindCol(headers, ["Ticket Creation Time"], true),
+      desc:   ivFindCol(headers, ["Case Description"], false),
+      rc1:    ivFindCol(headers, ["Root Cause LVL. 1"], false),
+      rc2:    ivFindCol(headers, ["Root Cause LVL. 2"], false),
+      rcd:    ivFindCol(headers, ["Root Cause - Diagnostic"], false),
+    };
+
+    const monthlyBySite={}, monthlyByTI={}, monthlyBySupervisor={}, monthlyByType={}, monthlyByOffice={};
+    const addC = (obj,key)=>{ obj[key]=(obj[key]||0)+1; };
+    const siteMeta = {};
+    const siteQualTickets = {};
+    let rowsTotal=0, rowsDated=0;
+
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i];
+      if(!r || !r.length) continue;
+      rowsTotal++;
+      const ctype = ivCleanVal(r[col.type], null);
+      const sid = ivCleanVal(r[col.sid]);
+      const sname = ivCleanVal(r[col.sname]);
+      const typo = ivCleanVal(r[col.typo]);
+      const prio = ivCleanVal(r[col.prio]);
+      const sclass = ivCleanVal(r[col.sclass]);
+      const om = ivCleanVal(r[col.office]);
+      const sup = ivCleanVal(r[col.sup]);
+      const ti = ivTiName(r[col.ti]);
+      const dt = ivParseDate(r[col.dt]);
+      if(!dt) continue;
+      rowsDated++;
+      const month = ivMonthKey(dt);
+
+      addC(monthlyBySite, sid+'\u0001'+sname+'\u0001'+month);
+      addC(monthlyByTI, ti+'\u0001'+month);
+      addC(monthlyBySupervisor, sup+'\u0001'+month);
+      addC(monthlyByType, ctype+'\u0001'+month);
+      addC(monthlyByOffice, om+'\u0001'+month);
+
+      let extra = '';
+      [col.desc,col.rc1,col.rc2,col.rcd].forEach(c=>{ if(c>=0) extra += ' ' + (r[c]||''); });
+      const isExcluded = IV_EXCLUDED_TYPES.has(ctype);
+      const qualifies = ctype==='Maintenance Pilone' ? IV_PYLON_RE.test(extra) : !isExcluded;
+
+      if(qualifies){
+        const prevM = siteMeta[sname];
+        if(!prevM || dt > prevM.dt) siteMeta[sname] = {sid, sname, type:ctype, typo, prio, sclass, om, dt};
+        if(!siteQualTickets[sname]) siteQualTickets[sname] = [];
+        siteQualTickets[sname].push({dt, ti, ctype});
+      }
+    }
+    if(!rowsDated) throw new Error("Aucune date de création de ticket n'a pu être lue — vérifiez le fichier.");
+
+    const inc = ivBuildIncidentIndex();
+    const TODAY_D = new Date();
+    const TODAY_ISO = ivDateISO(TODAY_D);
+
+    const effRows = [];
+    Object.keys(siteMeta).forEach(sname=>{
+      const m = siteMeta[sname];
+      const lastIntervISO = ivDateISO(m.dt);
+      const lastOccISO = inc.last[sname] || null;
+      const nbRec = inc.count[sname] || 0;
+      const siteHS = !!(lastOccISO && lastOccISO > lastIntervISO);
+      const daysSince = Math.floor((TODAY_D - m.dt) / 86400000);
+      const recent = daysSince < 30;
+      const inefficace = siteHS;
+      const reco = inefficace ? (IV_RECO_BY_TYPE[m.type] || IV_RECO_GENERIC) : "";
+      effRows.push({sname, sid:m.sid, type:m.type, typo:m.typo, sclass:m.sclass, prio:m.prio, om:m.om,
+        lastInterv:lastIntervISO, lastOcc:lastOccISO, nbRec, siteHS, recent, inefficace, reco});
+    });
+
+    const tiStats = {};
+    Object.keys(siteQualTickets).forEach(sname=>{
+      const tickets = siteQualTickets[sname].slice().sort((a,b)=>a.dt-b.dt);
+      const incs = inc.dates[sname] || [];
+      const n = tickets.length;
+      tickets.forEach((tk,idx)=>{
+        const startISO = ivDateISO(tk.dt);
+        const endISO = (idx+1<n) ? ivDateISO(tickets[idx+1].dt) : TODAY_ISO;
+        const bad = incs.some(d => d>startISO && d<=endISO);
+        if(!tiStats[tk.ti]) tiStats[tk.ti] = {total:0, inefficace:0};
+        tiStats[tk.ti].total++;
+        if(bad) tiStats[tk.ti].inefficace++;
+      });
+    });
+    const techRanking = Object.keys(tiStats).map(ti=>{
+      const s = tiStats[ti];
+      const taux = s.total ? Math.round((1-(s.inefficace/s.total))*1000)/10 : 0;
+      return {ti, total:s.total, inefficace:s.inefficace, efficace:s.total-s.inefficace, tauxEff:taux};
+    }).sort((a,b)=> b.tauxEff-a.tauxEff || b.total-a.total);
+
+    const toRows = (obj, keys) => Object.entries(obj).map(([k,n])=>{
+      const parts = k.split('\u0001'); const o={}; keys.forEach((kk,i)=>o[kk]=parts[i]); o.n=n; return o;
+    });
+    const monthsSet = ivUniqueSorted(toRows(monthlyBySite,['sid','sname','month']).map(r=>r.month));
+
+    INTV = {
+      months: monthsSet,
+      monthlyBySite: toRows(monthlyBySite, ['sid','sname','month']),
+      monthlyByTI: toRows(monthlyByTI, ['ti','month']),
+      monthlyBySupervisor: toRows(monthlyBySupervisor, ['sup','month']),
+      monthlyByType: toRows(monthlyByType, ['type','month']),
+      monthlyByOffice: toRows(monthlyByOffice, ['om','month']),
+      effectiveness: effRows,
+      techRanking: techRanking,
+    };
+
+    document.getElementById('ivSourceInfo').textContent =
+      `Données recalculées depuis « ${file.name} » le ${new Date().toLocaleString('fr-FR')} — ${rowsDated} lignes traitées, ${Object.keys(siteMeta).length} sites suivis. (Mise à jour valable dans ce navigateur ; pour la partager avec les autres collaborateurs, uploadez ensuite ce fichier sur GitHub.)`;
+
+    initInterv();
+    setBtn('&#10003; Mis à jour');
+    setTimeout(()=>setBtn('&#8682; Charger Export Tickets'), 2200);
+  } catch(err){
+    console.error(err);
+    setBtn('&#9888; Erreur');
+    setTimeout(()=>setBtn('&#8682; Charger Export Tickets'), 2800);
+    alert("Erreur lors du chargement du fichier :\n" + err.message);
   }
 }
 
