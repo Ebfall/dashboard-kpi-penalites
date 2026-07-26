@@ -172,7 +172,7 @@ tbody tr:nth-child(even){background:#F0F3F7}
   </div>
   <div style="overflow:auto;max-height:360px">
     <table id="tblNurMensuel">
-      <thead><tr><th>Mois</th><th class="r">NUR avant réconciliation</th><th class="r">NUR réconcilié</th><th class="r">Pénalité appliquée (FCFA)</th></tr></thead>
+      <thead><tr><th>Mois</th><th class="r">NUR réconcilié</th><th class="r">Pénalité appliquée (FCFA)</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -189,13 +189,11 @@ tbody tr:nth-child(even){background:#F0F3F7}
   <div style="display:flex;justify-content:center">
     <svg id="nurGaugeSvg" viewBox="0 0 300 170" width="380" style="max-width:100%">
       <path d="M20,150 A130,130 0 0,1 280,150" fill="none" stroke="#DDEBD9" stroke-width="26"/>
-      <path d="M20,150 A130,130 0 0,1 280,150" fill="none" stroke="#FDE9C8" stroke-width="26" stroke-dasharray="41 408" stroke-dashoffset="-231"/>
-      <path d="M20,150 A130,130 0 0,1 280,150" fill="none" stroke="#F8D7CB" stroke-width="26" stroke-dasharray="136 408" stroke-dashoffset="-272"/>
+      <path d="M20,150 A130,130 0 0,1 280,150" fill="none" stroke="#F8D7CB" stroke-width="26" stroke-dasharray="61 408" stroke-dashoffset="-347"/>
       <line id="nurGaugeNeedle" x1="150" y1="150" x2="150" y2="35" stroke="#14213D" stroke-width="4"/>
       <circle cx="150" cy="150" r="7" fill="#14213D"/>
       <text x="20" y="168" font-size="11" fill="#5C6B85">0</text>
-      <text x="140" y="20" font-size="11" fill="#5C6B85">90 (objectif)</text>
-      <text x="252" y="168" font-size="11" fill="#5C6B85">135+</text>
+      <text x="255" y="168" font-size="11" fill="#5C6B85">90 (objectif)</text>
       <text x="150" y="130" font-size="22" font-weight="700" fill="#14213D" text-anchor="middle" id="nurGaugeValue">–</text>
     </svg>
   </div>
@@ -909,8 +907,8 @@ function renderPenaltyTrends(){
   const allMonths = Array.from(new Set([...months, ...(DATA.nurMensuel||[]).map(r=>r.month)])).sort();
   tb.innerHTML = allMonths.map(m=>{
     const r = nurMap[m] || {};
-    return `<tr><td>${moisLabel(m)}</td><td class="r num">${r.nurAvant!=null?Fn(r.nurAvant):'—'}</td><td class="r num">${r.nur!=null?Fn(r.nur):'—'}</td><td class="r num">${r.penalite!=null?F(r.penalite):'—'}</td></tr>`;
-  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--steel)">Feuille NUR &amp; PENALITES absente ou vide</td></tr>';
+    return `<tr><td>${moisLabel(m)}</td><td class="r num">${r.nur!=null?Fn(r.nur):'—'}</td><td class="r num">${r.penalite!=null?F(r.penalite):'—'}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--steel)">Feuille NUR &amp; PENALITES absente ou vide</td></tr>';
 
   const compLabels = months.map(m=>moisLabel(m));
   const compReel = monthly.map(r=>r.reel);
@@ -924,7 +922,6 @@ function renderPenaltyTrends(){
   const evolLabels = evolMonths.map(m=>moisLabel(m));
   const evolPenal = evolMonths.map(m => (nurMap[m]||{}).penalite ?? null);
   const evolNur = evolMonths.map(m => (nurMap[m]||{}).nur ?? null);
-  const evolNurAvant = evolMonths.map(m => (nurMap[m]||{}).nurAvant ?? null);
   if(charts['chNurEvol']) charts['chNurEvol'].destroy();
   if(typeof Chart!=='undefined'){
     charts['chNurEvol'] = new Chart(document.getElementById('chNurEvol'), {
@@ -932,7 +929,6 @@ function renderPenaltyTrends(){
       data:{labels:evolLabels, datasets:[
         {label:'Pénalités appliquées (FCFA)', data:evolPenal, borderColor:'#D9480F', backgroundColor:'#D9480F', yAxisID:'y', tension:.25, spanGaps:true},
         {label:'NUR réconcilié', data:evolNur, borderColor:'#14213D', backgroundColor:'#14213D', yAxisID:'y1', tension:.25, spanGaps:true},
-        {label:'NUR avant réconciliation', data:evolNurAvant, borderColor:'#B7791F', backgroundColor:'#B7791F', yAxisID:'y1', tension:.25, spanGaps:true, borderDash:[5,4]},
       ]},
       options:{responsive:true, interaction:{mode:'index',intersect:false},
         scales:{
@@ -945,7 +941,7 @@ function renderPenaltyTrends(){
 }
 
 function renderNurGauge(nurMap){
-  const OBJ = 90, MAX = 135;
+  const OBJ = 90, MAX = 90;
   const months2026 = Object.keys(nurMap).filter(m=>m.startsWith('2026') && nurMap[m].nur!=null).sort();
   const moisFiltre = v('fMois');
   let value, label, nbMois;
