@@ -964,7 +964,7 @@ function renderNurGauge(nurMap){
   document.getElementById('nurGaugeTitle').textContent = `${label} — objectif ${OBJ} points`;
 
   const pct = Math.max(0, Math.min(1, value / MAX));
-  const angle = -90 + pct*180;
+  const angle = 180 + pct*180;
   const rad = angle * Math.PI/180;
   const cx=150, cy=150, len=112;
   const x2 = cx + len*Math.cos(rad), y2 = cy + len*Math.sin(rad);
