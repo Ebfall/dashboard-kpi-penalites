@@ -578,37 +578,65 @@ function fill(id, opts, all){
 }
 function taux(nur){ return nur>=200 ? 1 : (nur>=150 ? nur/150-1 : 0); }
 
-function computeAutres(){
-  const n=id=>+v(id)||0;
-  // Disponibilité supervision
+function calcPenaltiesFromValues(o){
+  const n=id=>+(o[id])||0;
   const s=n('qSup');
   const pSup = s>=99?0 : s>=98?1500000 : s>=94?5000000 : s>=89?10000000 : 15000000;
-  // RER (annuel) : écart en points vs cible 32 %
   const e=n('qRer')-32;
   const pRer = e>=-0.5?0 : e>=-1?10000000 : e>=-5?50000000 : e>=-10?100000000 : 150000000;
-  // GFAOE
   const pGf = n('qGf2')*500000+n('qGf3')*350000+n('qGf4')*250000+n('qGf5')*150000;
-  // Refueling
   const pRf = n('qRf2')*500000+n('qRf3')*350000+n('qRf4')*250000+n('qRf5')*150000;
-  // Mise à disposition de puissance
   const pMp = n('qMp2')*1000000+n('qMp3')*700000+n('qMp4')*500000+n('qMp5')*300000
             + n('qMc2')*750000+n('qMc3')*500000+n('qMc4')*300000+n('qMc5')*200000;
-  // Publication TB
   const pTb = (n('qTb1')+n('qTb2'))*300000;
-  // ATP / PM
   const pAtp = n('qAtpA')*100000+n('qAtpD')*250000;
   const pPm  = n('qPmA')*100000+n('qPmD')*250000;
-  // Conformité config (3.3.16) — non réductible
   const pCf = n('qCf')*750000 + n('qEff');
-  // Chute / affaissement de pylône — 25 M FCFA par événement, dû à 100 %
   const pPylC = n('qPylC')*25000000;
   const pPylA = n('qPylA')*25000000;
   const reduc = pSup+pRer+pGf+pRf+pMp+pTb+pAtp+pPm;
-  const vals={pSup,pRer,pGf,pRf,pMp,pTb,pAtp,pPm,pCf,pPylC,pPylA};
-  Object.entries(vals).forEach(([k,val])=>{const el=document.getElementById(k);if(el)el.textContent=F(val);});
-  const el=document.getElementById('pAutres'); if(el)el.textContent=F(reduc+pCf+pPylC+pPylA);
-  const ed=document.getElementById('pAutresDet'); if(ed)ed.textContent=`Non concernés par la règle NUR : dus à 100 % dès saisie`;
-  // Échos des taux saisis dans les filtres + indicateurs de conformité
+  return {pSup,pRer,pGf,pRf,pMp,pTb,pAtp,pPm,pCf,pPylC,pPylA,reduc,nonReduc:pCf+pPylC+pPylA,total:reduc+pCf+pPylC+pPylA};
+}
+function computeAutres(nbMoisScope){
+  const domVals={}; SAISIE_IDS.forEach(id=>{const e=document.getElementById(id); if(e) domVals[id]=e.value;});
+  const moisFiltre = v('fMois');
+  let vals, nbMoisAgreges=1;
+  if(!moisFiltre){
+    // Tous les mois : la pénalité de chaque KPI "Autres" doit s'additionner sur tous les mois
+    // réellement saisis, et non prendre la valeur unique du bucket "Tous les mois".
+    const realMonths = Object.keys(SAISIES).filter(m=>m);
+    if(realMonths.length){
+      vals = {pSup:0,pRer:0,pGf:0,pRf:0,pMp:0,pTb:0,pAtp:0,pPm:0,pCf:0,pPylC:0,pPylA:0,reduc:0,nonReduc:0,total:0};
+      realMonths.forEach(m=>{
+        const r = calcPenaltiesFromValues(SAISIES[m]);
+        Object.keys(vals).forEach(k=>vals[k]+=r[k]);
+      });
+      nbMoisAgreges = realMonths.length;
+    } else {
+      // Aucune saisie mois par mois : le taux affiché (qSup, qRer) est un taux mensuel type.
+      // Sa pénalité doit donc être comptée pour chacun des mois couverts par le filtre, pas une seule fois.
+      vals = calcPenaltiesFromValues(domVals);
+      const mult = (nbMoisScope && nbMoisScope>1) ? nbMoisScope : 1;
+      if(mult>1){
+        vals.pSup *= mult; vals.pRer *= mult;
+        vals.reduc = vals.pSup+vals.pRer+vals.pGf+vals.pRf+vals.pMp+vals.pTb+vals.pAtp+vals.pPm;
+        vals.total = vals.reduc + vals.pCf + vals.pPylC + vals.pPylA;
+      }
+      nbMoisAgreges = mult;
+    }
+  } else {
+    vals = calcPenaltiesFromValues(domVals);
+  }
+  const {pSup,pRer,pGf,pRf,pMp,pTb,pAtp,pPm,pCf,pPylC,pPylA,reduc}=vals;
+  Object.entries(vals).forEach(([k,val])=>{const el=document.getElementById(k);if(el && typeof val==='number' && !['reduc','nonReduc','total'].includes(k))el.textContent=F(val);});
+  const el=document.getElementById('pAutres'); if(el)el.textContent=F(vals.total);
+  const ed=document.getElementById('pAutresDet');
+  if(ed) ed.textContent = (!moisFiltre && nbMoisAgreges>1)
+    ? `Non concernés par la règle NUR : dus à 100 % dès saisie — Taux Sup/Récurrence comptés sur ${nbMoisAgreges} mois`
+    : `Non concernés par la règle NUR : dus à 100 % dès saisie`;
+  // Échos des taux saisis dans les filtres + indicateurs de conformité (reflètent toujours le mois affiché à l'écran)
+  const n=id=>+v(id)||0;
+  const e=n('qRer')-32;
   const echo=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
   const ok=(id,cond,msg)=>{const e=document.getElementById(id);if(e)e.innerHTML=cond?'<span class="okb y">cible atteinte</span>':'<span class="okb n">'+(msg||'sous la cible — saisir les volumes')+'</span>';};
   echo('echoSup',n('qSup')); echo('echoRer',n('qRer'));
@@ -621,7 +649,7 @@ function computeAutres(){
   ok('okMig',n('qMigT')>=100,'plan de migration sous la cible — vérifier la conformité des configurations');
   ok('okPylC',n('qPylC')===0,n('qPylC')+' chute(s) × 25 M');
   ok('okPylA',n('qPylA')===0,n('qPylA')+' affaissement(s) × 25 M');
-  return {total:reduc+pCf+pPylC+pPylA, reduc, nonReduc:pCf+pPylC+pPylA, vals};
+  return {total:vals.total, reduc:vals.reduc, nonReduc:vals.nonReduc, vals};
 }
 
 // ==== Saisies mensuelles : chaque mois (filtre Date) conserve ses propres valeurs de KPI ====
@@ -642,6 +670,8 @@ function snapshotSaisies(){  // mémorise les valeurs affichées sous le mois co
 function loadSaisies(mois){  // applique aux champs les valeurs du mois demandé (ou les défauts)
   const o=SAISIES[mois]||{};
   SAISIE_IDS.forEach(id=>{const e=document.getElementById(id); if(e) e.value = (o[id]!==undefined?o[id]:defSaisie(id));});
+  // « Tous les mois » : le NUR ET doit toujours refléter la moyenne auto, jamais une ancienne saisie ponctuelle
+  if(!mois){ const fEl=document.getElementById('fNurMan'); if(fEl) fEl.value=''; }
 }
 function onMoisChange(){
   snapshotSaisies();          // sauve les saisies du mois qu'on quitte
@@ -720,12 +750,17 @@ function refreshAll(){
   });
 
   // --- Pénalités globales du périmètre
-  const nurAuto = tks.reduce((s,t)=>s+t.nur,0);
+  const moisEnScope = new Set(tks.map(t=>t.d.slice(0,7)));
+  const nurSommeScope = tks.reduce((s,t)=>s+t.nur,0);
+  // "Tous les mois" : le NUR ET auto doit représenter une moyenne mensuelle comparable à un mois seul,
+  // pas la somme brute cumulée sur toute la période filtrée.
+  const nurAuto = (!mo && moisEnScope.size>1) ? nurSommeScope/moisEnScope.size : nurSommeScope;
   const nurManRaw = v('fNurMan');
   const nurMan = parseFloat(String(nurManRaw).replace(',','.'));
   const manual = nurManRaw!=='' && isFinite(nurMan) && nurMan>=0;
   const nurTot = manual ? nurMan : nurAuto;
   const tx = taux(nurTot);
+  { const fEl=document.getElementById('fNurMan'); if(fEl) fEl.placeholder = (!mo && moisEnScope.size>1) ? ('NUR moyen : '+Fn(nurAuto)) : ('auto : '+Fn(nurAuto)); }
   // Exemptés de la réduction NUR : sites D2 + typologie avec GE (Solaire+GE, Secteur+GE, Secteur+Solaire+GE, GE) impactant ≥ 5 sites (col. E & AF)
   const isEx = t => t.d2===1 || (t.ge===1 && t.im>=5);
   let vrBrut=0, recRefs=new Map();
@@ -763,7 +798,7 @@ function refreshAll(){
   })();
 
   // --- Autres KPI contractuels (saisie)
-  const A = computeAutres();
+  const A = computeAutres(moisEnScope.size);
 
   // --- Répartition des pénalités par catégorie de KPI (référentiel « Catégorie KPI »)
   // VR / MTTR / TTR depuis les tickets ; Récurrence depuis les réfs ; MP Efficacité & ATP depuis les saisies du mois.
