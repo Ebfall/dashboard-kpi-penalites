@@ -752,15 +752,25 @@ function refreshAll(){
   // --- Pénalités globales du périmètre
   const moisEnScope = new Set(tks.map(t=>t.d.slice(0,7)));
   const nurSommeScope = tks.reduce((s,t)=>s+t.nur,0);
-  // "Tous les mois" : le NUR ET auto doit représenter une moyenne mensuelle comparable à un mois seul,
-  // pas la somme brute cumulée sur toute la période filtrée.
-  const nurAuto = (!mo && moisEnScope.size>1) ? nurSommeScope/moisEnScope.size : nurSommeScope;
+  // Source privilégiée pour le NUR ET : le NUR réconcilié saisi manuellement (feuille NUR & PENALITES).
+  // « Tous les mois » = moyenne sur TOUS les mois saisis dans cette feuille (pas seulement ceux couverts
+  // par les tickets importés) ; un mois précis = sa propre valeur saisie si elle existe.
+  const nurMensuelMap = {}; (DATA.nurMensuel||[]).forEach(r=>{ if(r.nur!=null) nurMensuelMap[r.month]=r.nur; });
+  let nurAuto;
+  if(mo){
+    nurAuto = (nurMensuelMap[mo]!=null) ? nurMensuelMap[mo] : nurSommeScope;
+  } else {
+    const tousMoisSaisis = Object.keys(nurMensuelMap);
+    nurAuto = tousMoisSaisis.length
+      ? tousMoisSaisis.reduce((s,m)=>s+nurMensuelMap[m],0)/tousMoisSaisis.length
+      : (moisEnScope.size>1 ? nurSommeScope/moisEnScope.size : nurSommeScope);
+  }
   const nurManRaw = v('fNurMan');
   const nurMan = parseFloat(String(nurManRaw).replace(',','.'));
   const manual = nurManRaw!=='' && isFinite(nurMan) && nurMan>=0;
   const nurTot = manual ? nurMan : nurAuto;
   const tx = taux(nurTot);
-  { const fEl=document.getElementById('fNurMan'); if(fEl) fEl.placeholder = (!mo && moisEnScope.size>1) ? ('NUR moyen : '+Fn(nurAuto)) : ('auto : '+Fn(nurAuto)); }
+  { const fEl=document.getElementById('fNurMan'); if(fEl) fEl.placeholder = !mo ? ('NUR moyen : '+Fn(nurAuto)) : ('auto : '+Fn(nurAuto)); }
   // Exemptés de la réduction NUR : sites D2 + typologie avec GE (Solaire+GE, Secteur+GE, Secteur+Solaire+GE, GE) impactant ≥ 5 sites (col. E & AF)
   const isEx = t => t.d2===1 || (t.ge===1 && t.im>=5);
   let vrBrut=0, recRefs=new Map();
