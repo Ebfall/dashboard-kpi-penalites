@@ -760,7 +760,8 @@ function refreshAll(){
   if(mo){
     nurAuto = (nurMensuelMap[mo]!=null) ? nurMensuelMap[mo] : nurSommeScope;
   } else {
-    const tousMoisSaisis = Object.keys(nurMensuelMap);
+    const anneeRef = new Date().getFullYear();
+    const tousMoisSaisis = Object.keys(nurMensuelMap).filter(m=>m.startsWith(String(anneeRef)));
     nurAuto = tousMoisSaisis.length
       ? tousMoisSaisis.reduce((s,m)=>s+nurMensuelMap[m],0)/tousMoisSaisis.length
       : (moisEnScope.size>1 ? nurSommeScope/moisEnScope.size : nurSommeScope);
@@ -913,12 +914,13 @@ function calcMonthTotals(month){
   const refGrace = new Set();
   DATA.cycles.forEach(c=>{ if(refD <= c.fg) refGrace.add(c.rf); });
   const isEx = t => t.d2===1 || (t.ge===1 && t.im>=5);
-  const nurAuto = tks.reduce((s,t)=>s+t.nur,0);
-  const savedFNurMan = document.getElementById('fNurMan').value;
-  loadSaisies(month);
-  const nurManRaw = v('fNurMan');
-  const nurMan = parseFloat(String(nurManRaw).replace(',','.'));
-  const manual = nurManRaw!=='' && isFinite(nurMan) && nurMan>=0;
+  const nurTicket = tks.reduce((s,t)=>s+t.nur,0);
+  const nurMensuelMap = {}; (DATA.nurMensuel||[]).forEach(r=>{ if(r.nur!=null) nurMensuelMap[r.month]=r.nur; });
+  const saisieMois = SAISIES[month] || {};
+  const nurManRaw = saisieMois['fNurMan'];
+  const nurMan = parseFloat(String(nurManRaw||'').replace(',','.'));
+  const manual = nurManRaw!==undefined && nurManRaw!=='' && isFinite(nurMan) && nurMan>=0;
+  const nurAuto = (nurMensuelMap[month]!=null) ? nurMensuelMap[month] : nurTicket;
   const tx = taux(manual ? nurMan : nurAuto);
   let vrBrut=0, recRefs=new Map();
   tks.forEach(t=>{
@@ -932,9 +934,7 @@ function calcMonthTotals(month){
     (isEx(t)?penEx+=m:penStd+=m);
   });
   tks.forEach(t=>{ if(t.mk){ (isEx(t)?penEx+=t.pv:penStd+=t.pv); } });
-  const A = computeAutres();
-  loadSaisies(curMois);
-  document.getElementById('fNurMan').value = savedFNurMan;
+  const A = calcPenaltiesFromValues(saisieMois);
   const brut = vrBrut + recTot + A.total;
   const reel = (penEx + penStd*tx) + A.total;
   return {brut, reel};
