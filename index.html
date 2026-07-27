@@ -1642,7 +1642,7 @@ function refreshInterv(){
     `<tr><td>${i+1}</td><td>${r.sup}</td>${months.map(m=>`<td class="r num">${r.byMonth[m]||''}</td>`).join('')}<td class="r num" style="font-weight:800">${r.total}</td></tr>`
   ).join('') || `<tr><td colspan="${2+months.length+1}" style="text-align:center;color:var(--steel)">Aucune donnée</td></tr>`;
 
-  // ---- Tableau TI × Type × Mois (colonnes imbriquées : Type > Mois, + sous-total par type + total général) ----
+  // ---- Tableau TI × Mois × Type (colonnes imbriquées : Mois > Type, + sous-total par mois + total général) ----
   let tiTypeFiltered = (INTV.monthlyByTIType||[]).filter(r=>{
     if(qTIType && !(r.ti||'').toUpperCase().includes(qTIType) && !(r.type||'').toUpperCase().includes(qTIType)) return false;
     if(mois && r.month !== mois) return false;
@@ -1655,19 +1655,19 @@ function refreshInterv(){
 
   document.querySelector('#ivTblTIType thead').innerHTML =
     `<tr><th rowspan="2">#</th><th rowspan="2">Technicien / Équipe (TI)</th>` +
-    typesList.map(t=>`<th colspan="${monthsForTITable.length+1}" style="text-align:center">${t}</th>`).join('') +
+    monthsForTITable.map(m=>`<th colspan="${typesList.length+1}" style="text-align:center">${IV_MONTH_LABEL(m)}</th>`).join('') +
     `<th rowspan="2" class="r" style="background:#0E1A30">Total général</th></tr>` +
-    `<tr>` + typesList.map(()=>
-      monthsForTITable.map(m=>`<th class="r">${IV_MONTH_LABEL(m)}</th>`).join('') + `<th class="r" style="background:#EAF1F8">Sous-total</th>`
+    `<tr>` + monthsForTITable.map(()=>
+      typesList.map(t=>`<th class="r">${t}</th>`).join('') + `<th class="r" style="background:#EAF1F8">Total mois</th>`
     ).join('') + `</tr>`;
 
   const rowMap = new Map();
   tiTypeFiltered.forEach(r=>{
-    if(!rowMap.has(r.ti)) rowMap.set(r.ti, {ti:r.ti, byTypeMonth:{}, byType:{}, total:0});
+    if(!rowMap.has(r.ti)) rowMap.set(r.ti, {ti:r.ti, byMonthType:{}, byMonth:{}, total:0});
     const o = rowMap.get(r.ti);
-    if(!o.byTypeMonth[r.type]) o.byTypeMonth[r.type] = {};
-    o.byTypeMonth[r.type][r.month] = (o.byTypeMonth[r.type][r.month]||0) + r.n;
-    o.byType[r.type] = (o.byType[r.type]||0) + r.n;
+    if(!o.byMonthType[r.month]) o.byMonthType[r.month] = {};
+    o.byMonthType[r.month][r.type] = (o.byMonthType[r.month][r.type]||0) + r.n;
+    o.byMonth[r.month] = (o.byMonth[r.month]||0) + r.n;
     o.total += r.n;
   });
   let tiTypeRows = Array.from(rowMap.values()).sort((a,b)=>b.total-a.total);
@@ -1675,12 +1675,12 @@ function refreshInterv(){
   document.getElementById('ivTITypeCount').textContent = `${tiTypeRows.length} technicien(s) — affichage des ${Math.min(topNTIType,tiTypeRows.length)} premiers`;
   _ivLastRows.titype = tiTypeRows; _ivLastRows.titypeCols = typesList; _ivLastRows.titypeMonths = monthsForTITable;
 
-  const colTotals = {}; typesList.forEach(t=>{ colTotals[t] = {}; monthsForTITable.forEach(m=>colTotals[t][m]=0); colTotals[t].sub=0; });
+  const colTotals = {}; monthsForTITable.forEach(m=>{ colTotals[m] = {}; typesList.forEach(t=>colTotals[m][t]=0); colTotals[m].sub=0; });
   let grandTotal = 0;
   tiTypeRows.forEach(r=>{
-    typesList.forEach(t=>{
-      monthsForTITable.forEach(m=>{ colTotals[t][m] += ((r.byTypeMonth[t]||{})[m]||0); });
-      colTotals[t].sub += (r.byType[t]||0);
+    monthsForTITable.forEach(m=>{
+      typesList.forEach(t=>{ colTotals[m][t] += ((r.byMonthType[m]||{})[t]||0); });
+      colTotals[m].sub += (r.byMonth[m]||0);
     });
     grandTotal += r.total;
   });
@@ -1688,16 +1688,16 @@ function refreshInterv(){
   const tbTIType = document.querySelector('#ivTblTIType tbody');
   tbTIType.innerHTML = tiTypeRows.slice(0,topNTIType).map((r,i)=>
     `<tr><td>${i+1}</td><td>${r.ti}</td>` +
-    typesList.map(t=>{
-      const byM = r.byTypeMonth[t]||{};
-      return monthsForTITable.map(m=>`<td class="r num">${byM[m]||''}</td>`).join('') + `<td class="r num" style="background:#FAF8F4;font-weight:700">${r.byType[t]||''}</td>`;
+    monthsForTITable.map(m=>{
+      const byT = r.byMonthType[m]||{};
+      return typesList.map(t=>`<td class="r num">${byT[t]||''}</td>`).join('') + `<td class="r num" style="background:#FAF8F4;font-weight:700">${r.byMonth[m]||''}</td>`;
     }).join('') +
     `<td class="r num" style="font-weight:800">${r.total}</td></tr>`
-  ).join('') || `<tr><td colspan="${2+typesList.length*(monthsForTITable.length+1)+1}" style="text-align:center;color:var(--steel)">Aucune donnée</td></tr>`;
+  ).join('') || `<tr><td colspan="${2+monthsForTITable.length*(typesList.length+1)+1}" style="text-align:center;color:var(--steel)">Aucune donnée</td></tr>`;
 
   document.querySelector('#ivTblTIType tfoot').innerHTML = tiTypeRows.length ? `<tr style="background:#EAF1F8;font-weight:800">
     <td colspan="2">Total général</td>` +
-    typesList.map(t=> monthsForTITable.map(m=>`<td class="r num">${colTotals[t][m]}</td>`).join('') + `<td class="r num">${colTotals[t].sub}</td>`).join('') +
+    monthsForTITable.map(m=> typesList.map(t=>`<td class="r num">${colTotals[m][t]}</td>`).join('') + `<td class="r num">${colTotals[m].sub}</td>`).join('') +
     `<td class="r num" style="background:#0E1A30;color:#fff">${grandTotal}</td></tr>` : '';
 
   // ---- Classement techniciens ----
@@ -1875,12 +1875,12 @@ function ivExport(which){
     const cols = _ivLastRows.titypeCols || [];
     const mo2 = _ivLastRows.titypeMonths || [];
     const header = ['Technicien / Équipe (TI)'];
-    cols.forEach(t=>{ mo2.forEach(m=>header.push(t+' — '+IV_MONTH_LABEL(m))); header.push(t+' — Sous-total'); });
+    mo2.forEach(m=>{ cols.forEach(t=>header.push(IV_MONTH_LABEL(m)+' — '+t)); header.push(IV_MONTH_LABEL(m)+' — Total mois'); });
     header.push('Total général');
-    ivDownloadCsv(`interventions_par_TI_type_mois_${stamp}.csv`, header,
+    ivDownloadCsv(`interventions_par_TI_mois_type_${stamp}.csv`, header,
       (_ivLastRows.titype||[]).map(r=>{
         const row=[r.ti];
-        cols.forEach(t=>{ const byM=r.byTypeMonth[t]||{}; mo2.forEach(m=>row.push(byM[m]||0)); row.push(r.byType[t]||0); });
+        mo2.forEach(m=>{ const byT=r.byMonthType[m]||{}; cols.forEach(t=>row.push(byT[t]||0)); row.push(r.byMonth[m]||0); });
         row.push(r.total);
         return row;
       }));
