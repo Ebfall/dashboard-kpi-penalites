@@ -760,8 +760,7 @@ function refreshAll(){
   if(mo){
     nurAuto = (nurMensuelMap[mo]!=null) ? nurMensuelMap[mo] : nurSommeScope;
   } else {
-    const anneeRef = new Date().getFullYear();
-    const tousMoisSaisis = Object.keys(nurMensuelMap).filter(m=>m.startsWith(String(anneeRef)));
+    const tousMoisSaisis = Object.keys(nurMensuelMap);
     nurAuto = tousMoisSaisis.length
       ? tousMoisSaisis.reduce((s,m)=>s+nurMensuelMap[m],0)/tousMoisSaisis.length
       : (moisEnScope.size>1 ? nurSommeScope/moisEnScope.size : nurSommeScope);
