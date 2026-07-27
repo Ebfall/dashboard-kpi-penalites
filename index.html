@@ -760,7 +760,7 @@ function refreshAll(){
   if(mo){
     nurAuto = (nurMensuelMap[mo]!=null) ? nurMensuelMap[mo] : nurSommeScope;
   } else {
-    const tousMoisSaisis = Object.keys(nurMensuelMap);
+    const tousMoisSaisis = Object.keys(nurMensuelMap).filter(m=>m.startsWith('2026'));
     nurAuto = tousMoisSaisis.length
       ? tousMoisSaisis.reduce((s,m)=>s+nurMensuelMap[m],0)/tousMoisSaisis.length
       : (moisEnScope.size>1 ? nurSommeScope/moisEnScope.size : nurSommeScope);
